@@ -257,7 +257,6 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          {/* Декоративный хэндллер сверху */}
           <View style={styles.modalHandle} />
 
           <Text style={styles.modalTitle}>Масштабирование</Text>
@@ -383,7 +382,6 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
   );
 };
 
-// --- СТИЛИ LIQUID GLASS ---
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
@@ -397,7 +395,6 @@ const styles = StyleSheet.create({
     position: 'absolute' 
   },
 
-  // Кнопка настроек (Стекло)
   scaleButton: {
     position: 'absolute',
     top: 100,
@@ -418,12 +415,11 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   
-  // Бейдж формата
   formatBadge: {
     position: 'absolute',
     top: -5,
     right: -5,
-    backgroundColor: '#00E5FF', // Неоновый голубой вместо зеленого
+    backgroundColor: '#00E5FF',
     borderRadius: 10,
     width: 20,
     height: 20,
@@ -438,12 +434,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   
-  // Информация о формате под кнопкой
   formatInfo: {
     position: 'absolute',
     top: 158,
     right: 20,
-    backgroundColor: 'rgba(0, 229, 255, 0.2)', // Голубое стекло
+    backgroundColor: 'rgba(0, 229, 255, 0.2)',
     padding: 8,
     borderRadius: 8,
     borderWidth: 1,
@@ -455,7 +450,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
-  // Подсказки (Стеклянные таблетки)
   hintContainerTop: {
     position: 'absolute',
     top: 50,
@@ -486,7 +480,6 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
 
-  // Загрузка
   loaderContainer: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
@@ -514,21 +507,20 @@ const styles = StyleSheet.create({
     fontWeight: '500'
   },
 
-  // --- МОДАЛКА (Темное стекло) ---
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end', // Прилипаем к низу как iOS лист
+    justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: 'rgba(28, 28, 30, 0.95)', // Темное плотное стекло
+    backgroundColor: 'rgba(28, 28, 30, 0.95)',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
     paddingBottom: 40,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
-    borderBottomWidth: 0, // Нижней границы нет, оно уходит в пустоту
+    borderBottomWidth: 0,
   },
   modalHandle: {
     width: 40,
@@ -546,7 +538,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   
-  // Пункты меню
   menuItem: {
     paddingVertical: 18,
     borderBottomWidth: 1,
@@ -557,7 +548,6 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   
-  // Ввод размеров
   customInputContainer: {
     marginVertical: 20,
   },
@@ -578,7 +568,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     fontSize: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)', // Стеклянный инпут
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     color: 'white',
   },
   customInputX: {
@@ -587,9 +577,8 @@ const styles = StyleSheet.create({
     color: '#888',
   },
   
-  // Кнопки внутри модалки
   glassButtonAccent: {
-    backgroundColor: 'rgba(0, 122, 255, 0.8)', // Синий акцент
+    backgroundColor: 'rgba(0, 122, 255, 0.8)',
     borderRadius: 12,
     padding: 14,
     marginTop: 15,
@@ -604,7 +593,7 @@ const styles = StyleSheet.create({
   },
   
   resetButton: {
-    backgroundColor: 'rgba(255, 159, 10, 0.8)', // Оранжевый акцент
+    backgroundColor: 'rgba(255, 159, 10, 0.8)',
     borderRadius: 12,
     padding: 14,
     marginTop: 10,
@@ -619,7 +608,7 @@ const styles = StyleSheet.create({
   },
   
   closeButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)', // Серое стекло
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',

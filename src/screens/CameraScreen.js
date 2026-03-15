@@ -135,29 +135,25 @@ const CameraScreen = ({ navigation }) => {
           style={styles.settingsButton} 
           onPress={() => setSettingsVisible(true)}
         >
-          {/* Имитация иконки "зубчатого колеса" текстом или используй Icon компонент */}
           <Text style={styles.settingsIcon}>⚙️</Text>
         </TouchableOpacity>
       )}
 
       {!isFlashVisible && (
-        <View style={styles.bottomContainer}>
-          <TouchableOpacity style={styles.captureButton} onPress={takePhoto}>
-            <View style={styles.captureButtonInner} />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.captureButton} onPress={takePhoto}>
+          <View style={styles.captureButtonInner} />
+        </TouchableOpacity>
       )}
 
       <Modal
         visible={settingsVisible}
         transparent={true}
-        animationType="fade" // Более плавная анимация для стекла
+        animationType="fade"
         onRequestClose={() => setSettingsVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.glassModalContent}>
             
-            {/* Декоративная полоска сверху (Handle) как в iOS */}
             <View style={styles.modalHandle} />
 
             <Text style={styles.modalTitle}>Настройки</Text>
@@ -188,12 +184,10 @@ const CameraScreen = ({ navigation }) => {
   );
 };
 
-// --- СТИЛИ LIQUID GLASS ---
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: 'black', 
-    justifyContent: 'flex-end' 
+    backgroundColor: 'black'
   },
   loadingContainer: { 
     flex: 1, 
@@ -202,63 +196,40 @@ const styles = StyleSheet.create({
     backgroundColor: 'black' 
   },
   
-  // Кнопка настроек (Стекло)
   settingsButton: {
     position: 'absolute',
-    top: 60, // Безопасная зона
+    top: 60,
     right: 20,
     width: 50,
     height: 50,
     borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
-    // Glass Effect
-    backgroundColor: 'rgba(255, 255, 255, 0.15)', // Полупрозрачный белый
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)', // Светлая обводка
+    borderColor: 'rgba(255, 255, 255, 0.3)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 10,
-    overflow: 'hidden', // Чтобы не вылезало за круг
+    overflow: 'hidden',
   },
   settingsIcon: {
     fontSize: 24,
-    // Тень для иконки, чтобы была читаема
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
 
-  // Нижняя панель (Плавающее стекло)
-  bottomContainer: { 
-    position: 'absolute',
-    bottom: 40, // Отступ от низа
-    left: 20,
-    right: 20,
-    height: 100, 
-    borderRadius: 40, // Сильное скругление (Pill shape)
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    // Glass Effect
-    backgroundColor: 'rgba(28, 28, 30, 0.6)', // Темное полупрозрачное стекло
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)', // Тонкий светлый контур сверху
-    // Тень для объема
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 15,
-  },
-
-  // Кнопка съемки
   captureButton: { 
+    position: 'absolute',
+    bottom: 40,
+    alignSelf: 'center',
     width: 70, 
     height: 70, 
     borderRadius: 35, 
-    backgroundColor: 'rgba(255, 255, 255, 0.2)', // Внешнее кольцо
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     borderWidth: 4,
     borderColor: 'white',
     justifyContent: 'center',
@@ -269,7 +240,6 @@ const styles = StyleSheet.create({
     height: 58,
     borderRadius: 29,
     backgroundColor: 'white',
-    // Тень внутри кнопки
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
@@ -282,33 +252,29 @@ const styles = StyleSheet.create({
     zIndex: 10 
   },
 
-  // Модальное окно
   modalOverlay: {
     flex: 1,
-    justifyContent: 'flex-end', // Чтобы модалка появлялась снизу как sheet
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)', // Легкая затемненность фона
+    backgroundColor: 'rgba(0,0,0,0.4)',
   },
   
   glassModalContent: {
     width: '100%',
-    backgroundColor: Platform.OS === 'ios' ? 'rgba(28, 28, 30, 0.85)' : 'rgba(28, 28, 30, 0.95)', // На iOS можно прозрачнее
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(28, 28, 30, 0.85)' : 'rgba(28, 28, 30, 0.95)',
     borderRadius: 24,
     padding: 20,
-    paddingBottom: 40, // Отступ снизу для удобства
+    paddingBottom: 40,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)', // Светлый контур
-    
-    // Тени для стекла
+    borderColor: 'rgba(255, 255, 255, 0.1)',
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -5 }, // Тень сверху
+    shadowOffset: { width: 0, height: -5 },
     shadowOpacity: 0.3,
     shadowRadius: 15,
     elevation: 20,
   },
   
-  // Полоска-хваталка сверху
   modalHandle: {
     width: 40,
     height: 5,
@@ -330,7 +296,6 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 10,
     padding: 10,
-    // Можно добавить "ячейку" внутри стекла
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 10,
   },
@@ -347,9 +312,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   
-  // Стеклянная кнопка внутри модалки
   glassButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)', // Полупрозрачная
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     paddingVertical: 12,
     paddingHorizontal: 40,
     borderRadius: 12,

@@ -20,13 +20,12 @@ const DraggableCorner = ({ index, point, onMove }) => {
       style={[
         styles.draggableCorner,
         {
-          left: point.x - 28, // Увеличили зону захвата и центрировали
+          left: point.x - 28,
           top: point.y - 28,
         },
       ]}
       {...panResponder.panHandlers}
     >
-      {/* Внутренний шарик для визуала */}
       <View style={styles.cornerInner} />
     </View>
   );
@@ -149,7 +148,6 @@ const PreviewScreen = ({ route, navigation }) => {
 
         {/* SVG Layer for Glass Effect Polygon */}
         <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
-            {/* Определяем фильтр размытия для тени, если нужно */}
             <Defs>
                 <Filter id="glow">
                     <FeGaussianBlur stdDeviation="3" result="coloredBlur"/>
@@ -157,31 +155,29 @@ const PreviewScreen = ({ route, navigation }) => {
                 </Filter>
             </Defs>
             
-            {/* Сама область документа (Glass Polygon) */}
             <Polygon
                 points={`${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y} ${p4.x},${p4.y}`}
-                fill="rgba(255, 255, 255, 0.15)" // Полупрозрачное стекло
-                stroke="rgba(0, 229, 255, 0.8)" // Голубая неоновая обводка
+                fill="rgba(255, 255, 255, 0.15)"
+                stroke="rgba(0, 229, 255, 0.8)"
                 strokeWidth="2.5"
-                strokeDasharray="0" // Сплошная линия
-                filter="url(#glow)" // Применяем свечение
+                strokeDasharray="0"
+                filter="url(#glow)"
             />
             
-            {/* Точки углов (визуальная часть SVG, поверх всего) */}
             {[p1, p2, p3, p4].map((point, index) => (
                 <Circle
                     key={index}
                     cx={point.x}
                     cy={point.y}
                     r={10}
-                    fill="rgba(255, 255, 255, 0.6)" // Полупрозрачный центр
+                    fill="rgba(255, 255, 255, 0.6)"
                     stroke="white"
                     strokeWidth="2"
                 />
             ))}
         </Svg>
 
-        {/* Drag Handles (прозрачные области для пальца) */}
+        {/* Drag Handles */}
         {[p1, p2, p3, p4].map((point, index) => (
             <DraggableCorner
                 key={index}
@@ -191,9 +187,12 @@ const PreviewScreen = ({ route, navigation }) => {
             />
         ))}
 
-        {/* Кнопка "Назад" (Glass Button) */}
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Text style={styles.backButtonText}>←</Text>
+        {/* Обновленная кнопка "Назад" с крестиком */}
+        <TouchableOpacity style={styles.closeButton} onPress={() => navigation.goBack()}>
+            <View style={styles.closeIcon}>
+                <View style={[styles.closeLine, styles.closeLineLeft]} />
+                <View style={[styles.closeLine, styles.closeLineRight]} />
+            </View>
         </TouchableOpacity>
     </View>
   );
@@ -211,8 +210,6 @@ const styles = StyleSheet.create({
     height: SCREEN_HEIGHT,
     position: 'absolute'
   },
-  
-  // --- Glass UI Elements ---
   
   // Верхняя подсказка
   topHintContainer: {
@@ -239,36 +236,36 @@ const styles = StyleSheet.create({
   // Угловой маркер (Drag Handle)
   draggableCorner: {
     position: 'absolute',
-    width: 56, // Большая зона касания
+    width: 56,
     height: 56,
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'transparent', // Сам вью прозрачный, внутри картинка
+    backgroundColor: 'transparent',
   },
   cornerInner: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.4)', // Матовый шарик
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
     borderWidth: 2,
     borderColor: 'white',
-    shadowColor: '#00E5FF', // Голубое свечение
+    shadowColor: '#00E5FF',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 6,
     elevation: 10,
   },
 
-  // Кнопка назад
-  backButton: {
+  // Обновленная кнопка закрытия с крестиком
+  closeButton: {
     position: 'absolute',
-    bottom: 40,
-    left: 30,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    top: 60,
+    left: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
@@ -278,12 +275,26 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 10,
+    zIndex: 10,
   },
-  backButtonText: {
-    color: 'white',
-    fontSize: 28,
-    fontWeight: '300',
-    marginTop: -2, // Центрирование стрелки
+  closeIcon: {
+    width: 20,
+    height: 20,
+    position: 'relative',
+  },
+  closeLine: {
+    position: 'absolute',
+    width: 20,
+    height: 2,
+    backgroundColor: 'white',
+    borderRadius: 2,
+    top: 9,
+  },
+  closeLineLeft: {
+    transform: [{ rotate: '45deg' }],
+  },
+  closeLineRight: {
+    transform: [{ rotate: '-45deg' }],
   },
 
   // Загрузка
