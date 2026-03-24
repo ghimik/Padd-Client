@@ -2,6 +2,67 @@ import RNFS from 'react-native-fs';
 
 export const API_URL = 'http://10.0.2.2:8041'; 
 
+export const enhanceDocument = async (imageUri, options = {}) => {
+  console.log('API: Улучшение документа для', imageUri);
+  
+  const {
+    brightness = 1.15,
+    contrast = 1.2,
+    whitening = 0.85,
+    shadow_removal = true,
+    sharpen = true
+  } = options;
+
+  try {
+    const formData = new FormData();
+    formData.append('file', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: 'photo.jpg',
+    });
+    formData.append('brightness', String(brightness));
+    formData.append('contrast', String(contrast));
+    formData.append('whitening', String(whitening));
+    formData.append('shadow_removal', String(shadow_removal));
+    formData.append('sharpen', String(sharpen));
+
+    const response = await fetch(`${API_URL}/enhance_document`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Server Error: ${response.status}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, chunk);
+    }
+    const base64Data = btoa(binary);
+
+    const path = `${RNFS.CachesDirectoryPath}/enhanced_${Date.now()}.jpg`;
+    await RNFS.writeFile(path, base64Data, 'base64');
+
+    console.log('API: Улучшенное фото сохранено по пути', path);
+    
+    return 'file://' + path;
+
+  } catch (error) {
+    console.error('API Enhancement Error:', error);
+    throw error;
+  }
+};
+
 export const detectCorners = async (imageUri, imageWidth, imageHeight) => {
   const makeFile = () => ({
     uri: imageUri,
