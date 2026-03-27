@@ -15,10 +15,10 @@ import {
   TouchableOpacity,
   Modal,
   TextInput,
-  Switch
+  Switch,
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { doOCR, API_URL, enhanceDocument } from '../api';
+import { doOCR, API_URL, enhanceDocument, fetchWithRetry } from '../api';
 import { CameraRoll } from '@react-native-camera-roll/camera-roll';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import RNFS from 'react-native-fs';
@@ -30,29 +30,36 @@ const PAPER_SIZES = {
   LETTER: { width: 2550, height: 3300, name: 'Letter' },
 };
 
+const ENHANCE_DEFAULTS = {
+  brightness: 1.15,
+  contrast: 1.2,
+  whitening: 0.85,
+  shadow_removal: true,
+  sharpen: true,
+};
+
 const WarpedPreviewScreen = ({ route, navigation }) => {
   const { warpedImageUri } = route.params;
-  
+  const originalUri = warpedImageUri;
+
+  const [previewUri, setPreviewUri] = useState(warpedImageUri);
   const [isProcessing, setIsProcessing] = useState(false);
+
   const [showScaleMenu, setShowScaleMenu] = useState(false);
   const [showEnhanceMenu, setShowEnhanceMenu] = useState(false);
-  const [selectedFormat, setSelectedFormat] = useState(null);
+
+  const [enhanceEnabled, setEnhanceEnabled] = useState(true);
+  const [enhancedUri, setEnhancedUri] = useState(null);
+
+  const [scaleConfig, setScaleConfig] = useState(null);
+  const [scaledState, setScaledState] = useState(null);
+
   const [customWidth, setCustomWidth] = useState('2480');
   const [customHeight, setCustomHeight] = useState('3508');
-  const [previewUri, setPreviewUri] = useState(warpedImageUri);
-  const [originalUri, setOriginalUri] = useState(warpedImageUri);
-  
-  const [enhanceEnabled, setEnhanceEnabled] = useState(false);
-  const [enhanceBrightness, setEnhanceBrightness] = useState('1.15');
-  const [enhanceContrast, setEnhanceContrast] = useState('1.2');
-  const [enhanceWhitening, setEnhanceWhitening] = useState('0.85');
-  const [enhanceShadowRemoval, setEnhanceShadowRemoval] = useState(true);
-  const [enhanceSharpen, setEnhanceSharpen] = useState(true);
-  
-  const scaledImageRef = useRef(null);
-  
   const [tempCustomWidth, setTempCustomWidth] = useState('2480');
   const [tempCustomHeight, setTempCustomHeight] = useState('3508');
+
+  const jobRef = useRef(0);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -63,7 +70,7 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
         } else if (gestureState.dy < -50) {
           handleStartOCR();
         }
-      }
+      },
     })
   ).current;
 
@@ -78,7 +85,7 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
             buttonNeutral: 'Спросить позже',
             buttonNegative: 'Отмена',
             buttonPositive: 'OK',
-          },
+          }
         );
         return granted === PermissionsAndroid.RESULTS.GRANTED;
       }
@@ -89,80 +96,25 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
     }
   };
 
-  const applyEnhancement = async () => {
-    if (!enhanceEnabled) {
-      setPreviewUri(originalUri);
-      scaledImageRef.current = null;
-      Toast.show({
-        type: 'info',
-        text1: 'Улучшение отключено',
-        text2: 'Показан оригинальный документ'
-      });
-      return;
-    }
-    
-    try {
-      setIsProcessing(true);
-      Toast.show({
-        type: 'info',
-        text1: 'Улучшение качества',
-        text2: 'Повышаем контраст, убираем тени...',
-        autoHide: false,
-      });
-      
-      const enhancedUri = await enhanceDocument(originalUri, {
-        brightness: parseFloat(enhanceBrightness),
-        contrast: parseFloat(enhanceContrast),
-        whitening: parseFloat(enhanceWhitening),
-        shadow_removal: enhanceShadowRemoval,
-        sharpen: enhanceSharpen
-      });
-      
-      setPreviewUri(enhancedUri);
-      scaledImageRef.current = enhancedUri;
-      
-      Toast.hide();
-      Toast.show({
-        type: 'success',
-        text1: 'Улучшение применено',
-        text2: 'Документ стал контрастнее и чище'
-      });
-      
-    } catch (error) {
-      console.error('Enhance error:', error);
-      Toast.hide();
-      Toast.show({
-        type: 'error',
-        text1: 'Ошибка',
-        text2: 'Не удалось улучшить изображение'
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  const isCurrentJob = (jobId) => jobId === jobRef.current;
 
-  const resizeImage = async (width, height) => {
+  const stretchImage = async (sourceUri, width, height) => {
     try {
-      setIsProcessing(true);
       console.log(`Stretch via server ${width}x${height}`);
 
       const form = new FormData();
       form.append('file', {
-        uri: previewUri,
+        uri: sourceUri,
         name: 'image.jpg',
         type: 'image/jpeg',
       });
-
       form.append('target_width', width);
       form.append('target_height', height);
 
-      const response = await fetch(`${API_URL}/stretch_to_aspect`, {
+      const response = await fetchWithRetry(`${API_URL}/stretch_to_aspect`, {
         method: 'POST',
         body: form,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      }, 3);
 
       if (!response.ok) throw new Error('Server error');
 
@@ -177,29 +129,99 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
       const permanentPath = `${RNFS.DocumentDirectoryPath}/${fileName}`;
       await RNFS.writeFile(permanentPath, base64, 'base64');
 
-      const uri = `file://${permanentPath}`;
-      scaledImageRef.current = uri;
-      setPreviewUri(uri);
-      
-      return uri;
-
+      return `file://${permanentPath}`;
     } catch (error) {
       console.error('Ошибка stretch:', error);
-      Alert.alert('Ошибка', 'Не удалось изменить размер изображения');
-      return null;
-    } finally {
-      setIsProcessing(false);
+      throw error;
     }
   };
 
-  const applyScaling = async (format) => {
-    let width, height, formatName;
-    
+  const getEnhancedUri = async () => {
+    if (enhancedUri) return enhancedUri;
+
+    try {
+      const uri = await enhanceDocument(originalUri, ENHANCE_DEFAULTS);
+      setEnhancedUri(uri);
+      return uri;
+    } catch (error) {
+      console.error('Enhance error:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Ошибка',
+        text2: 'Не удалось улучшить изображение',
+      });
+      return originalUri;
+    }
+  };
+
+  const getScaledUri = async (baseUri, config) => {
+    if (
+      scaledState &&
+      scaledState.baseUri === baseUri &&
+      scaledState.width === config.width &&
+      scaledState.height === config.height
+    ) {
+      return scaledState.uri;
+    }
+
+    try {
+      const uri = await stretchImage(baseUri, config.width, config.height);
+      setScaledState({
+        uri,
+        baseUri,
+        width: config.width,
+        height: config.height,
+        label: config.label,
+      });
+      return uri;
+    } catch (error) {
+      Alert.alert('Ошибка', 'Не удалось изменить размер изображения');
+      return baseUri;
+    }
+  };
+
+  const rebuildPreview = async () => {
+    const jobId = ++jobRef.current;
+    setIsProcessing(true);
+
+    try {
+      let baseUri = originalUri;
+
+      if (enhanceEnabled) {
+        baseUri = await getEnhancedUri();
+        if (!isCurrentJob(jobId)) return;
+      }
+
+      let finalUri = baseUri;
+      if (scaleConfig) {
+        finalUri = await getScaledUri(baseUri, scaleConfig);
+        if (!isCurrentJob(jobId)) return;
+      }
+
+      if (!isCurrentJob(jobId)) return;
+      setPreviewUri(finalUri);
+    } catch (error) {
+      if (!isCurrentJob(jobId)) return;
+      console.error('Preview build error:', error);
+    } finally {
+      if (isCurrentJob(jobId)) setIsProcessing(false);
+    }
+  };
+
+  useEffect(() => {
+    rebuildPreview();
+  }, [enhanceEnabled, scaleConfig]);
+
+  const applyScaling = (format) => {
+    let width;
+    let height;
+    let label;
+
     if (format === 'CUSTOM') {
-      width = parseInt(tempCustomWidth);
-      height = parseInt(tempCustomHeight);
-      formatName = `Custom ${width}x${height}`;
-      
+      width = parseInt(tempCustomWidth, 10);
+      height = parseInt(tempCustomHeight, 10);
+      label = `Custom ${width}x${height}`;
+
       if (isNaN(width) || isNaN(height) || width <= 0 || height <= 0) {
         Alert.alert('Ошибка', 'Введите корректные размеры');
         return;
@@ -208,17 +230,18 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
       const size = PAPER_SIZES[format];
       width = size.width;
       height = size.height;
-      formatName = size.name;
+      label = size.name;
     }
-    
-    const newUri = await resizeImage(width, height);
-    
-    if (newUri) {
-      setSelectedFormat(formatName);
-      setCustomWidth(width.toString());
-      setCustomHeight(height.toString());
-    }
-    
+
+    setCustomWidth(String(width));
+    setCustomHeight(String(height));
+    setScaleConfig({ width, height, label });
+    setShowScaleMenu(false);
+  };
+
+  const resetScaling = () => {
+    setScaleConfig(null);
+    setScaledState(null);
     setShowScaleMenu(false);
   };
 
@@ -237,12 +260,12 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
       if (uriToSave.startsWith('file://')) {
         const fileExists = await RNFS.exists(uriToSave.replace('file://', ''));
         if (!fileExists) {
-            uriToSave = originalUri;
-            Toast.show({
-                type: 'error',
-                text1: 'Ошибка кэша',
-                text2: 'Файл устарел, сохраняем оригинал'
-            });
+          uriToSave = originalUri;
+          Toast.show({
+            type: 'error',
+            text1: 'Ошибка кэша',
+            text2: 'Файл устарел, сохраняем оригинал',
+          });
         }
       }
 
@@ -252,9 +275,11 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
       Toast.show({
         type: 'success',
         text1: 'Сохранено',
-        text2: scaledImageRef.current ? `Изображение ${selectedFormat ? `(${selectedFormat})` : 'улучшено'}` : 'Фото добавлено в галерею'
+        text2:
+          previewUri !== originalUri
+            ? `Изображение ${scaleConfig ? `(${scaleConfig.label})` : 'улучшено'}`
+            : 'Фото добавлено в галерею',
       });
-
     } catch (error) {
       console.error('Ошибка сохранения:', error);
       Alert.alert('Ошибка', 'Не удалось сохранить фото: ' + error.message);
@@ -274,7 +299,7 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
     try {
       const imageForOCR = previewUri;
       const result = await doOCR(imageForOCR);
-      
+
       Toast.hide();
       Toast.show({
         type: 'success',
@@ -284,13 +309,12 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
         visibilityTime: 6000,
         onPress: () => openFile(result.pdfUri),
       });
-      
     } catch (error) {
       Toast.hide();
       Toast.show({
         type: 'error',
         text1: 'Ошибка OCR',
-        text2: error.message || 'Не удалось распознать текст'
+        text2: error.message || 'Не удалось распознать текст',
       });
     } finally {
       setIsProcessing(false);
@@ -310,11 +334,16 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
     }
   };
 
+  const enhancementApplied = enhanceEnabled && !!enhancedUri;
+  const scalingApplied = !!scaleConfig;
+
   const EnhanceMenu = () => (
     <Modal
       visible={showEnhanceMenu}
       transparent={true}
-      animationType="slide"
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      statusBarTranslucent={true}
       onRequestClose={() => setShowEnhanceMenu(false)}
     >
       <View style={styles.modalOverlay}>
@@ -322,7 +351,7 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
           <View style={styles.modalHandle} />
 
           <Text style={styles.modalTitle}>Улучшение качества</Text>
-          
+
           <View style={styles.settingRow}>
             <Text style={styles.settingText}>Включить улучшение</Text>
             <Switch
@@ -332,74 +361,16 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
               thumbColor={enhanceEnabled ? '#fff' : '#f4f3f4'}
             />
           </View>
-          
+
           {enhanceEnabled && (
-            <>
-              <View style={styles.divider} />
-              
-              <View style={styles.settingRow}>
-                <Text style={styles.settingText}>Яркость</Text>
-                <TextInput
-                  style={styles.smallInput}
-                  value={enhanceBrightness}
-                  onChangeText={setEnhanceBrightness}
-                  keyboardType="numeric"
-                />
-              </View>
-              
-              {/* Контраст */}
-              <View style={styles.settingRow}>
-                <Text style={styles.settingText}>Контраст</Text>
-                <TextInput
-                  style={styles.smallInput}
-                  value={enhanceContrast}
-                  onChangeText={setEnhanceContrast}
-                  keyboardType="numeric"
-                />
-              </View>
-              
-              <View style={styles.settingRow}>
-                <Text style={styles.settingText}>Отбеливание фона</Text>
-                <TextInput
-                  style={styles.smallInput}
-                  value={enhanceWhitening}
-                  onChangeText={setEnhanceWhitening}
-                  keyboardType="numeric"
-                />
-              </View>
-              
-              <View style={styles.settingRow}>
-                <Text style={styles.settingText}>Удаление теней</Text>
-                <Switch
-                  value={enhanceShadowRemoval}
-                  onValueChange={setEnhanceShadowRemoval}
-                  trackColor={{ false: '#444', true: '#00E5FF' }}
-                />
-              </View>
-              
-              {/* Резкость */}
-              <View style={styles.settingRow}>
-                <Text style={styles.settingText}>Повысить резкость</Text>
-                <Switch
-                  value={enhanceSharpen}
-                  onValueChange={setEnhanceSharpen}
-                  trackColor={{ false: '#444', true: '#00E5FF' }}
-                />
-              </View>
-            </>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoText}>
+                Используем оптимальные настройки по умолчанию
+              </Text>
+            </View>
           )}
-          
-          <TouchableOpacity 
-            style={styles.glassButtonAccent}
-            onPress={() => {
-              applyEnhancement();
-              setShowEnhanceMenu(false);
-            }}
-          >
-            <Text style={styles.glassButtonText}>Применить улучшение</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.closeButton}
             onPress={() => setShowEnhanceMenu(false)}
           >
@@ -414,7 +385,9 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
     <Modal
       visible={showScaleMenu}
       transparent={true}
-      animationType="slide"
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      statusBarTranslucent={true}
       onRequestClose={() => setShowScaleMenu(false)}
     >
       <View style={styles.modalOverlay}>
@@ -422,21 +395,18 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
           <View style={styles.modalHandle} />
 
           <Text style={styles.modalTitle}>Масштабирование</Text>
-          
-          <TouchableOpacity 
-            style={styles.menuItem}
-            onPress={() => applyScaling('A4')}
-          >
+
+          <TouchableOpacity style={styles.menuItem} onPress={() => applyScaling('A4')}>
             <Text style={styles.menuItemText}>📄 A4 (2480x3508)</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.menuItem}
             onPress={() => applyScaling('LETTER')}
           >
             <Text style={styles.menuItemText}>📄 Letter (2550x3300)</Text>
           </TouchableOpacity>
-          
+
           <View style={styles.customInputContainer}>
             <Text style={styles.customInputLabel}>Кастомный размер:</Text>
             <View style={styles.customInputRow}>
@@ -458,29 +428,18 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
                 placeholderTextColor="#888"
               />
             </View>
-            <TouchableOpacity 
-              style={styles.glassButtonAccent}
-              onPress={() => applyScaling('CUSTOM')}
-            >
+            <TouchableOpacity style={styles.glassButtonAccent} onPress={() => applyScaling('CUSTOM')}>
               <Text style={styles.glassButtonText}>Применить</Text>
             </TouchableOpacity>
           </View>
-          
-          {selectedFormat && (
-            <TouchableOpacity 
-              style={styles.resetButton}
-              onPress={() => {
-                setPreviewUri(originalUri);
-                scaledImageRef.current = null;
-                setSelectedFormat(null);
-                setShowScaleMenu(false);
-              }}
-            >
+
+          {scalingApplied && (
+            <TouchableOpacity style={styles.resetButton} onPress={resetScaling}>
               <Text style={styles.resetButtonText}>↺ Сбросить к оригиналу</Text>
             </TouchableOpacity>
           )}
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.closeButton}
             onPress={() => setShowScaleMenu(false)}
           >
@@ -493,25 +452,21 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
 
   return (
     <View style={styles.container} {...panResponder.panHandlers}>
-      <Image 
-        source={{ uri: previewUri }} 
-        style={styles.image} 
-        resizeMode="contain"
-      />
-      
-      <TouchableOpacity 
+      <Image source={{ uri: previewUri }} style={styles.image} resizeMode="contain" />
+
+      <TouchableOpacity
         style={[styles.scaleButton, { top: 100 }]}
         onPress={() => setShowEnhanceMenu(true)}
       >
         <Icon name="tune" size={26} color="white" />
-        {enhanceEnabled && (
+        {enhancementApplied && (
           <View style={styles.formatBadge}>
             <Text style={styles.formatBadgeText}>✓</Text>
           </View>
         )}
       </TouchableOpacity>
-      
-      <TouchableOpacity 
+
+      <TouchableOpacity
         style={[styles.scaleButton, { top: 160 }]}
         onPress={() => {
           setTempCustomWidth(customWidth);
@@ -520,29 +475,29 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
         }}
       >
         <Icon name="aspect-ratio" size={26} color="white" />
-        {selectedFormat && (
+        {scalingApplied && (
           <View style={styles.formatBadge}>
             <Text style={styles.formatBadgeText}>✓</Text>
           </View>
         )}
       </TouchableOpacity>
-      
-      {enhanceEnabled && (
+
+      {enhancementApplied && (
         <View style={[styles.formatInfo, { top: 218 }]}>
           <Text style={styles.formatInfoText}>✨ Улучшено</Text>
         </View>
       )}
-      
-      {selectedFormat && (
-        <View style={[styles.formatInfo, { top: enhanceEnabled ? 260 : 218 }]}>
-          <Text style={styles.formatInfoText}>{selectedFormat}</Text>
+
+      {scalingApplied && (
+        <View style={[styles.formatInfo, { top: enhancementApplied ? 260 : 218 }]}>
+          <Text style={styles.formatInfoText}>{scaleConfig.label}</Text>
         </View>
       )}
-      
+
       <View style={styles.hintContainerTop}>
         <Text style={styles.hintText}>Свайп вверх — распознать текст</Text>
       </View>
-      
+
       <View style={styles.hintContainerBottom}>
         <Text style={styles.hintText}>Свайп вниз — сохранить фото</Text>
       </View>
@@ -555,7 +510,7 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
           </View>
         </View>
       )}
-      
+
       <EnhanceMenu />
       <ScalingMenu />
     </View>
@@ -563,16 +518,16 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: 'black', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  container: {
+    flex: 1,
+    backgroundColor: 'black',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  image: { 
-    width: SCREEN_WIDTH, 
-    height: SCREEN_HEIGHT, 
-    position: 'absolute' 
+  image: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    position: 'absolute',
   },
 
   scaleButton: {
@@ -593,7 +548,7 @@ const styles = StyleSheet.create({
     elevation: 10,
     zIndex: 1000,
   },
-  
+
   formatBadge: {
     position: 'absolute',
     top: -5,
@@ -605,14 +560,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)'
+    borderColor: 'rgba(255,255,255,0.5)',
   },
   formatBadgeText: {
     color: 'black',
     fontSize: 12,
     fontWeight: 'bold',
   },
-  
+
   formatInfo: {
     position: 'absolute',
     right: 20,
@@ -660,9 +615,13 @@ const styles = StyleSheet.create({
 
   loaderContainer: {
     position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    justifyContent: 'center', alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)'
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
   },
   glassCard: {
     backgroundColor: 'rgba(28, 28, 30, 0.8)',
@@ -672,7 +631,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: "#000",
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.5,
     shadowRadius: 20,
@@ -682,7 +641,7 @@ const styles = StyleSheet.create({
     color: 'white',
     marginTop: 15,
     fontSize: 16,
-    fontWeight: '500'
+    fontWeight: '500',
   },
 
   modalOverlay: {
@@ -715,7 +674,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
-  
+
   menuItem: {
     paddingVertical: 18,
     borderBottomWidth: 1,
@@ -725,7 +684,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: 'white',
   },
-  
+
   settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -736,22 +695,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: 'white',
   },
-  smallInput: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 8,
-    padding: 8,
-    width: 60,
+  infoRow: {
+    paddingVertical: 10,
+  },
+  infoText: {
+    color: '#AAA',
+    fontSize: 14,
     textAlign: 'center',
-    color: 'white',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    marginVertical: 12,
-  },
-  
+
   customInputContainer: {
     marginVertical: 20,
   },
@@ -780,7 +732,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#888',
   },
-  
+
   glassButtonAccent: {
     backgroundColor: 'rgba(0, 122, 255, 0.8)',
     borderRadius: 12,
@@ -795,7 +747,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-  
+
   resetButton: {
     backgroundColor: 'rgba(255, 159, 10, 0.8)',
     borderRadius: 12,
@@ -810,7 +762,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-  
+
   closeButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 12,
@@ -818,7 +770,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   closeButtonText: {
     color: 'white',

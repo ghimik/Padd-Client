@@ -2,6 +2,23 @@ import RNFS from 'react-native-fs';
 
 export const API_URL = 'http://10.0.2.2:8041'; 
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+export const fetchWithRetry = async (url, options, attempts = 3) => {
+  let lastError;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      lastError = err;
+      if (i < attempts - 1) {
+        await delay(300);
+      }
+    }
+  }
+  throw lastError;
+};
+
 export const enhanceDocument = async (imageUri, options = {}) => {
   console.log('API: Улучшение документа для', imageUri);
   
@@ -26,12 +43,9 @@ export const enhanceDocument = async (imageUri, options = {}) => {
     formData.append('shadow_removal', String(shadow_removal));
     formData.append('sharpen', String(sharpen));
 
-    const response = await fetch(`${API_URL}/enhance_document`, {
+    const response = await fetchWithRetry(`${API_URL}/enhance_document`, {
       method: 'POST',
       body: formData,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
     });
 
     if (!response.ok) {
@@ -70,14 +84,13 @@ export const detectCorners = async (imageUri, imageWidth, imageHeight) => {
     name: 'photo.jpg'
   });
 
-  const res1 = await fetch(`${API_URL}/find_corners_and_bbox`, {
+  const res1 = await fetchWithRetry(`${API_URL}/find_corners_and_bbox`, {
     method: 'POST',
     body: (() => {
       const f = new FormData();
       f.append('file', makeFile());
       return f;
-    })(),
-    headers: { 'Content-Type': 'multipart/form-data' }
+    })()
   });
 
   if (!res1.ok) {
@@ -87,7 +100,7 @@ export const detectCorners = async (imageUri, imageWidth, imageHeight) => {
 
   const first = await res1.json();
 
-  const res2 = await fetch(`${API_URL}/refine_corners`, {
+  const res2 = await fetchWithRetry(`${API_URL}/refine_corners`, {
     method: 'POST',
     body: (() => {
       const f = new FormData();
@@ -95,8 +108,7 @@ export const detectCorners = async (imageUri, imageWidth, imageHeight) => {
       f.append('corners', JSON.stringify(first.corners));
       f.append('bbox', JSON.stringify(first.bbox));
       return f;
-    })(),
-    headers: { 'Content-Type': 'multipart/form-data' }
+    })()
   });
 
   if (!res2.ok) {
@@ -131,10 +143,9 @@ export const warpPerspective = async (imageUri, corners, imageWidth, imageHeight
     BL: [corners[3].x * imageWidth, corners[3].y * imageHeight],
   }));
 
-  const res = await fetch(`${API_URL}/warp_perspective`, {
+  const res = await fetchWithRetry(`${API_URL}/warp_perspective`, {
     method: 'POST',
-    body: formData,
-    headers: { 'Content-Type': 'multipart/form-data' },
+    body: formData
   });
 
   if (!res.ok) {
@@ -170,12 +181,9 @@ export const doOCR = async (imageUri) => {
       name: 'photo.jpg',
     });
 
-    const response = await fetch(`${API_URL}/do_ocr`, {
+    const response = await fetchWithRetry(`${API_URL}/do_ocr`, {
       method: 'POST',
-      body: formData,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+      body: formData
     });
 
     if (!response.ok) {
@@ -222,12 +230,9 @@ export const getRotationAngle = async (imageUri) => {
       name: 'photo.jpg',
     });
 
-    const response = await fetch(`${API_URL}/define_rotation_angle`, {
+    const response = await fetchWithRetry(`${API_URL}/define_rotation_angle`, {
       method: 'POST',
-      body: formData,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+      body: formData
     });
 
     if (!response.ok) {
