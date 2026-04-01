@@ -43,7 +43,8 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
   const originalUri = warpedImageUri;
 
   const [previewUri, setPreviewUri] = useState(warpedImageUri);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isPreviewProcessing, setIsPreviewProcessing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [showScaleMenu, setShowScaleMenu] = useState(false);
   const [showEnhanceMenu, setShowEnhanceMenu] = useState(false);
@@ -60,15 +61,36 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
   const [tempCustomHeight, setTempCustomHeight] = useState('3508');
 
   const jobRef = useRef(0);
+  const processingRef = useRef(false);
+  const enhancePromiseRef = useRef(null);
+  const scalePromiseRef = useRef(null);
+  const saveActionRef = useRef(null);
+  const ocrActionRef = useRef(null);
+  const isProcessing = isPreviewProcessing || isSubmitting;
+
+  useEffect(() => {
+    processingRef.current = isProcessing;
+  }, [isProcessing]);
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderRelease: (_, gestureState) => {
+        if (Math.abs(gestureState.dy) <= 50) return;
+
+        if (processingRef.current) {
+          Toast.show({
+            type: 'info',
+            text1: 'Подождите',
+            text2: 'Сначала завершим обработку изображения',
+          });
+          return;
+        }
+
         if (gestureState.dy > 50) {
-          handleSaveWithoutOCR();
+          saveActionRef.current?.();
         } else if (gestureState.dy < -50) {
-          handleStartOCR();
+          ocrActionRef.current?.();
         }
       },
     })
@@ -138,19 +160,32 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
 
   const getEnhancedUri = async () => {
     if (enhancedUri) return enhancedUri;
+    if (enhancePromiseRef.current) return enhancePromiseRef.current;
+
+    const promise = (async () => {
+      try {
+        const uri = await enhanceDocument(originalUri, ENHANCE_DEFAULTS);
+        setEnhancedUri(uri);
+        return uri;
+      } catch (error) {
+        console.error('Enhance error:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Ошибка',
+          text2: 'Не удалось улучшить изображение',
+        });
+        return originalUri;
+      }
+    })();
+
+    enhancePromiseRef.current = promise;
 
     try {
-      const uri = await enhanceDocument(originalUri, ENHANCE_DEFAULTS);
-      setEnhancedUri(uri);
-      return uri;
-    } catch (error) {
-      console.error('Enhance error:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Ошибка',
-        text2: 'Не удалось улучшить изображение',
-      });
-      return originalUri;
+      return await promise;
+    } finally {
+      if (enhancePromiseRef.current === promise) {
+        enhancePromiseRef.current = null;
+      }
     }
   };
 
@@ -164,39 +199,59 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
       return scaledState.uri;
     }
 
-    try {
-      const uri = await stretchImage(baseUri, config.width, config.height);
-      setScaledState({
-        uri,
-        baseUri,
-        width: config.width,
-        height: config.height,
-        label: config.label,
-      });
-      return uri;
-    } catch (error) {
-      Alert.alert('Ошибка', 'Не удалось изменить размер изображения');
-      return baseUri;
+    const cacheKey = `${baseUri}|${config.width}|${config.height}`;
+    if (scalePromiseRef.current?.key === cacheKey) {
+      return scalePromiseRef.current.promise;
     }
+
+    const promise = (async () => {
+      try {
+        const uri = await stretchImage(baseUri, config.width, config.height);
+        setScaledState({
+          uri,
+          baseUri,
+          width: config.width,
+          height: config.height,
+          label: config.label,
+        });
+        return uri;
+      } catch (error) {
+        Alert.alert('Ошибка', 'Не удалось изменить размер изображения');
+        return baseUri;
+      }
+    })();
+
+    scalePromiseRef.current = { key: cacheKey, promise };
+
+    try {
+      return await promise;
+    } finally {
+      if (scalePromiseRef.current?.promise === promise) {
+        scalePromiseRef.current = null;
+      }
+    }
+  };
+
+  const resolveFinalUri = async () => {
+    let baseUri = originalUri;
+
+    if (enhanceEnabled) {
+      baseUri = await getEnhancedUri();
+    }
+
+    if (scaleConfig) {
+      return getScaledUri(baseUri, scaleConfig);
+    }
+
+    return baseUri;
   };
 
   const rebuildPreview = async () => {
     const jobId = ++jobRef.current;
-    setIsProcessing(true);
+    setIsPreviewProcessing(true);
 
     try {
-      let baseUri = originalUri;
-
-      if (enhanceEnabled) {
-        baseUri = await getEnhancedUri();
-        if (!isCurrentJob(jobId)) return;
-      }
-
-      let finalUri = baseUri;
-      if (scaleConfig) {
-        finalUri = await getScaledUri(baseUri, scaleConfig);
-        if (!isCurrentJob(jobId)) return;
-      }
+      const finalUri = await resolveFinalUri();
 
       if (!isCurrentJob(jobId)) return;
       setPreviewUri(finalUri);
@@ -204,12 +259,13 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
       if (!isCurrentJob(jobId)) return;
       console.error('Preview build error:', error);
     } finally {
-      if (isCurrentJob(jobId)) setIsProcessing(false);
+      if (isCurrentJob(jobId)) setIsPreviewProcessing(false);
     }
   };
 
   useEffect(() => {
     rebuildPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enhanceEnabled, scaleConfig]);
 
   const applyScaling = (format) => {
@@ -246,6 +302,8 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
   };
 
   const handleSaveWithoutOCR = async () => {
+    setIsSubmitting(true);
+
     try {
       if (Platform.OS === 'android') {
         const hasPermission = await requestAndroidPermission();
@@ -255,7 +313,7 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
         }
       }
 
-      let uriToSave = previewUri;
+      let uriToSave = await resolveFinalUri();
 
       if (uriToSave.startsWith('file://')) {
         const fileExists = await RNFS.exists(uriToSave.replace('file://', ''));
@@ -269,6 +327,8 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
         }
       }
 
+      setPreviewUri(uriToSave);
+
       await CameraRoll.save(uriToSave, { type: 'photo' });
 
       navigation.navigate('Camera');
@@ -276,17 +336,20 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
         type: 'success',
         text1: 'Сохранено',
         text2:
-          previewUri !== originalUri
+          uriToSave !== originalUri
             ? `Изображение ${scaleConfig ? `(${scaleConfig.label})` : 'улучшено'}`
             : 'Фото добавлено в галерею',
       });
     } catch (error) {
       console.error('Ошибка сохранения:', error);
       Alert.alert('Ошибка', 'Не удалось сохранить фото: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleStartOCR = async () => {
+    setIsSubmitting(true);
     navigation.navigate('Camera');
     Toast.show({
       type: 'info',
@@ -294,10 +357,9 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
       text2: 'Распознаем текст документа',
       autoHide: false,
     });
-    setIsProcessing(true);
 
     try {
-      const imageForOCR = previewUri;
+      const imageForOCR = await resolveFinalUri();
       const result = await doOCR(imageForOCR);
 
       Toast.hide();
@@ -317,9 +379,14 @@ const WarpedPreviewScreen = ({ route, navigation }) => {
         text2: error.message || 'Не удалось распознать текст',
       });
     } finally {
-      setIsProcessing(false);
+      setIsSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    saveActionRef.current = handleSaveWithoutOCR;
+    ocrActionRef.current = handleStartOCR;
+  });
 
   const openFile = async (uri) => {
     try {
